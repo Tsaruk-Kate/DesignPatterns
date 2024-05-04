@@ -1,15 +1,18 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
+// Базовий клас для усіх елементів в HTML документі
 class LightNode
 {
     public virtual string GetOuterHtml() { return ""; }
     public virtual string GetInnerHtml() { return ""; }
 }
 
+// Клас для представлення текстових вузлів в HTML документі
 class LightTextNode : LightNode
 {
     private string _text;
+
     public LightTextNode(string text)
     {
         _text = text;
@@ -24,6 +27,7 @@ class LightTextNode : LightNode
     }
 }
 
+// Клас для представлення елементів в HTML документі
 class LightElementNode : LightNode
 {
     private string _tagName;
@@ -44,11 +48,6 @@ class LightElementNode : LightNode
     public void AddChild(LightNode node)
     {
         _children.Add(node);
-    }
-
-    public void RemoveChild(LightNode node)
-    {
-        _children.Remove(node);
     }
 
     public override string GetOuterHtml()
@@ -74,11 +73,109 @@ class LightElementNode : LightNode
         }
         return result;
     }
+
+    public IIterator CreateDepthFirstIterator()
+    {
+        return new DepthFirstIterator(this);
+    }
+
+    public IIterator CreateBreadthFirstIterator()
+    {
+        return new BreadthFirstIterator(this);
+    }
+
+    public List<LightNode> Children { get { return _children; } }
 }
+
+// Інтерфейс для ітератора
+interface IIterator
+{
+    LightNode Next();
+    bool HasNext();
+}
+
+// Клас ітератора для обходу дерева HTML в глибину
+class DepthFirstIterator : IIterator
+{
+    private Stack<LightNode> stack = new Stack<LightNode>();
+
+    public DepthFirstIterator(LightNode root)
+    {
+        Traverse(root);
+    }
+
+    private void Traverse(LightNode node)
+    {
+        stack.Push(node);
+        if (node is LightElementNode)
+        {
+            foreach (var child in ((LightElementNode)node).Children)
+            {
+                Traverse(child);
+            }
+        }
+    }
+
+    public LightNode Next()
+    {
+        if (stack.Count > 0)
+        {
+            return stack.Pop();
+        }
+        return null;
+    }
+
+    public bool HasNext()
+    {
+        return stack.Count > 0;
+    }
+}
+
+// Клас ітератора для обходу дерева HTML в ширину
+class BreadthFirstIterator : IIterator
+{
+    private Queue<LightNode> queue = new Queue<LightNode>();
+
+    public BreadthFirstIterator(LightNode root)
+    {
+        Traverse(root);
+    }
+
+    private void Traverse(LightNode node)
+    {
+        queue.Enqueue(node);
+        while (queue.Count > 0)
+        {
+            LightNode currentNode = queue.Dequeue();
+            if (currentNode is LightElementNode)
+            {
+                foreach (var child in ((LightElementNode)currentNode).Children)
+                {
+                    queue.Enqueue(child);
+                }
+            }
+        }
+    }
+
+    public LightNode Next()
+    {
+        if (queue.Count > 0)
+        {
+            return queue.Dequeue();
+        }
+        return null;
+    }
+
+    public bool HasNext()
+    {
+        return queue.Count > 0;
+    }
+}
+
 // Інтерфейс команди
 interface ICommand
 {
-    void Execute(); // Метод виконання команди
+    void Execute();
 }
 
 // Команда для додавання дочірнього вузла
@@ -113,55 +210,54 @@ class RemoveChildCommand : ICommand
 
     public void Execute()
     {
-        _parent.RemoveChild(_child);
+        _parent.Children.Remove(_child);
     }
 }
 
-// Виконавець команд
-class CommandInvoker
-{
-    private List<ICommand> _commands = new List<ICommand>();
-
-    public void StoreAndExecute(ICommand command)
-    {
-        _commands.Add(command);
-        command.Execute();
-    }
-}
-
-// Головний клас програми
 class Program
 {
     static void Main(string[] args)
     {
-        CommandInvoker invoker = new CommandInvoker();
-
-        // Створюємо елементи дерева HTML
         LightElementNode header = new LightElementNode("h1", "block", "closing", new List<string>());
         LightTextNode headerText = new LightTextNode("Welcome to my page!");
-        invoker.StoreAndExecute(new AddChildCommand(header, headerText));
+        header.AddChild(headerText);
 
         LightElementNode table = new LightElementNode("table", "block", "closing", new List<string> { "styled-table" });
-        invoker.StoreAndExecute(new AddChildCommand(header, table));
-
         LightElementNode tableRow1 = new LightElementNode("tr", "block", "closing", new List<string>());
-        invoker.StoreAndExecute(new AddChildCommand(table, tableRow1));
+        table.AddChild(tableRow1);
 
         LightElementNode tableData1 = new LightElementNode("td", "inline", "closing", new List<string>());
         LightTextNode dataText1 = new LightTextNode("Cell 1");
-        invoker.StoreAndExecute(new AddChildCommand(tableRow1, tableData1));
-        invoker.StoreAndExecute(new AddChildCommand(tableData1, dataText1));
+        tableData1.AddChild(dataText1);
+        tableRow1.AddChild(tableData1);
 
         LightElementNode tableData2 = new LightElementNode("td", "inline", "closing", new List<string>());
         LightTextNode dataText2 = new LightTextNode("Cell 2");
-        invoker.StoreAndExecute(new AddChildCommand(tableRow1, tableData2));
-        invoker.StoreAndExecute(new AddChildCommand(tableData2, dataText2));
+        tableData2.AddChild(dataText2);
+        tableRow1.AddChild(tableData2);
 
-        // Видаляємо заголовок
-        invoker.StoreAndExecute(new RemoveChildCommand(header, headerText));
+        ICommand addHeaderCommand = new AddChildCommand(header, headerText);
+        ICommand addTableCommand = new AddChildCommand(header, table);
+        ICommand removeHeaderCommand = new RemoveChildCommand(header, headerText);
 
-        // Виводимо HTML
-        Console.WriteLine(header.GetOuterHtml());
-        Console.WriteLine(table.GetOuterHtml());
+        addHeaderCommand.Execute();
+        addTableCommand.Execute();
+        removeHeaderCommand.Execute();
+
+        Console.WriteLine("Depth First Traversal:");
+        IIterator depthFirstIterator = header.CreateDepthFirstIterator();
+        while (depthFirstIterator.HasNext())
+        {
+            LightNode node = depthFirstIterator.Next();
+            Console.WriteLine(node.GetOuterHtml());
+        }
+
+        Console.WriteLine("\nBreadth First Traversal:");
+        IIterator breadthFirstIterator = header.CreateBreadthFirstIterator();
+        while (breadthFirstIterator.HasNext())
+        {
+            LightNode node = breadthFirstIterator.Next();
+            Console.WriteLine(node.GetOuterHtml());
+        }
     }
 }
