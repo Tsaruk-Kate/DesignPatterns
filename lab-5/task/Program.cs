@@ -46,6 +46,7 @@ class DepthFirstIterator : IIterator
 class BreadthFirstIterator : IIterator
 {
     private Queue<LightNode> queue = new Queue<LightNode>();
+
     public BreadthFirstIterator(LightNode root)
     {
         Traverse(root);
@@ -94,7 +95,6 @@ class AddChildCommand : ICommand
         _parent = parent;
         _child = child;
     }
-
     public void Execute()
     {
         _parent.AddChild(_child);
@@ -154,34 +154,112 @@ class EditMode : IHtmlState
         // Вже в режимі редагування
     }
 }
+// Інтерфейс для Template Method
+abstract class NodeLifecycleHooks
+{
+    // Абстрактні методи для кроків життєвого циклу
+    public abstract void OnCreated();
+    public abstract void OnInserted();
+    public abstract void OnRemoved();
+    public abstract void OnStylesApplied();
+    public abstract void OnClassListApplied();
+    public abstract void OnTextRendered();
+
+    // Шаблонний метод для виклику кроків життєвого циклу
+    public void RunLifecycleHooks()
+    {
+        OnCreated();
+        OnInserted();
+        OnRemoved();
+        OnStylesApplied();
+        OnClassListApplied();
+        OnTextRendered();
+    }
+}
+// Клас для кроків життєвого циклу елемента
+class ElementLifecycleHooks : NodeLifecycleHooks
+{
+    public override void OnCreated()
+    {
+        Console.WriteLine("Element created.");
+    }
+    public override void OnInserted()
+    {
+        Console.WriteLine("Element inserted.");
+    }
+    public override void OnRemoved()
+    {
+        Console.WriteLine("Element removed.");
+    }
+    public override void OnStylesApplied()
+    {
+        Console.WriteLine("Styles applied to element.");
+    }
+    public override void OnClassListApplied()
+    {
+        Console.WriteLine("Class list applied to element.");
+    }
+    public override void OnTextRendered()
+    {
+        Console.WriteLine("Text rendered inside element.");
+    }
+}
+// Клас для кроків життєвого циклу текстового вузла
+class TextNodeLifecycleHooks : NodeLifecycleHooks
+{
+    public override void OnCreated()
+    {
+        Console.WriteLine("Text node created.");
+    }
+    public override void OnInserted()
+    {
+        Console.WriteLine("Text node inserted.");
+    }
+    public override void OnRemoved()
+    {
+        Console.WriteLine("Text node removed.");
+    }
+    public override void OnStylesApplied()
+    {
+        Console.WriteLine("Styles applied to text node.");
+    }
+    public override void OnClassListApplied()
+    {
+        Console.WriteLine("Class list applied to text node.");
+    }
+    public override void OnTextRendered()
+    {
+        Console.WriteLine("Text node rendered.");
+    }
+}
+// Абстрактний клас Node
 abstract class LightNode
 {
     protected IHtmlState _state;
+    protected NodeLifecycleHooks _lifecycleHooks;
+
     public void SetState(IHtmlState state)
     {
         _state = state;
     }
-    public abstract string GetOuterHtml();
-    public abstract string GetInnerHtml();
-
-    public virtual void SwitchToViewMode()
+    public virtual string GetOuterHtml() { return ""; }
+    public virtual string GetInnerHtml() { return ""; }
+    public virtual void RunLifecycleHooks()
     {
-        _state.SwitchToViewMode(this);
-    }
-    public virtual void SwitchToEditMode()
-    {
-        _state.SwitchToEditMode(this);
+        _lifecycleHooks.RunLifecycleHooks();
     }
     public virtual void SetEditMode() { }
     public virtual void SetViewMode() { }
 }
+// Клас текстового вузла
 class LightTextNode : LightNode
 {
     private string _text;
+
     public LightTextNode(string text)
     {
         _text = text;
-        SetState(new ViewMode());
+        _lifecycleHooks = new TextNodeLifecycleHooks();
     }
     public override string GetOuterHtml()
     {
@@ -191,8 +269,12 @@ class LightTextNode : LightNode
     {
         return _text;
     }
+    public override void RunLifecycleHooks()
+    {
+        _lifecycleHooks.RunLifecycleHooks();
+    }
 }
-
+// Клас елемента вузла
 class LightElementNode : LightNode
 {
     private string _tagName;
@@ -202,7 +284,6 @@ class LightElementNode : LightNode
     private List<string> _cssClasses;
     private Dictionary<string, string> _attributes;
     public List<LightNode> Children { get { return _children; } }
-
     public LightElementNode(string tagName, string displayType, string closingType, List<string> cssClasses)
     {
         _tagName = tagName;
@@ -210,32 +291,17 @@ class LightElementNode : LightNode
         _closingType = closingType;
         _cssClasses = cssClasses;
         _children = new List<LightNode>();
-        _attributes = new Dictionary<string, string>();
-        SetState(new ViewMode());
+        _lifecycleHooks = new ElementLifecycleHooks();
     }
     public void AddChild(LightNode node)
     {
         if (node != null)
             _children.Add(node);
     }
-    // Методи додавання та видалення атрибутів
-    public void AddAttribute(string key, string value)
-    {
-        _attributes[key] = value;
-    }
-    public void RemoveAttribute(string key)
-    {
-        _attributes.Remove(key);
-    }
     public override string GetOuterHtml()
     {
+        RunLifecycleHooks(); // Виклик хуків перед отриманням HTML
         string result = $"<{_tagName} class=\"{string.Join(" ", _cssClasses)}\" display=\"{_displayType}\" closing=\"{_closingType}\"";
-
-        // Додавання атрибутів до HTML-виводу
-        foreach (var attribute in _attributes)
-        {
-            result += $" {attribute.Key}=\"{attribute.Value}\"";
-        }
 
         result += ">\n";
         foreach (var child in _children)
@@ -257,21 +323,21 @@ class LightElementNode : LightNode
         }
         return result;
     }
-    public override void SetEditMode()
+    public override void RunLifecycleHooks()
     {
-        SetState(new EditMode());
-        foreach (var child in _children)
-        {
-            child.SetEditMode();
-        }
+        _lifecycleHooks.RunLifecycleHooks();
     }
-    public override void SetViewMode()
+    public void AddAttribute(string key, string value)
     {
-        SetState(new ViewMode());
-        foreach (var child in _children)
-        {
-            child.SetViewMode();
-        }
+        if (_attributes == null)
+            _attributes = new Dictionary<string, string>();
+
+        _attributes[key] = value;
+    }
+    public void RemoveAttribute(string key)
+    {
+        if (_attributes != null && _attributes.ContainsKey(key))
+            _attributes.Remove(key);
     }
 }
 // Контекстний клас
@@ -306,7 +372,6 @@ class HtmlContext
             Console.WriteLine("Attributes can only be added in edit mode.");
         }
     }
-
     public void RemoveAttribute(LightElementNode node, string key)
     {
         if (_state is EditMode)
@@ -400,8 +465,14 @@ class Program
         context.AddAttribute(table, "cellpadding", "5");
         context.RemoveAttribute(table, "class");
 
-        Console.WriteLine("\nAfter Adding/Removing Attributes:");
-        context.RenderHtml(header);
-        context.RenderHtml(table);
+        // Перевірка ElementLifecycleHooks
+        Console.WriteLine("\nRunning Element Lifecycle Hooks:");
+        ElementLifecycleHooks elementLifecycleHooks = new ElementLifecycleHooks();
+        elementLifecycleHooks.RunLifecycleHooks();
+
+        // Перевірка TextNodeLifecycleHooks
+        Console.WriteLine("\nRunning Text Node Lifecycle Hooks:");
+        TextNodeLifecycleHooks textNodeLifecycleHooks = new TextNodeLifecycleHooks();
+        textNodeLifecycleHooks.RunLifecycleHooks();
     }
 }
