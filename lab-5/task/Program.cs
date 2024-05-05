@@ -1,6 +1,120 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
+// Інтерфейс для ітератора
+interface IIterator
+{
+    LightNode Next();
+    bool HasNext();
+}
+
+// Клас ітератора для обходу дерева HTML в глибину
+class DepthFirstIterator : IIterator
+{
+    private Stack<LightNode> stack = new Stack<LightNode>();
+
+    public DepthFirstIterator(LightNode root)
+    {
+        Traverse(root);
+    }
+
+    private void Traverse(LightNode node)
+    {
+        stack.Push(node);
+        if (node is LightElementNode)
+        {
+            foreach (var child in ((LightElementNode)node).Children)
+            {
+                Traverse(child);
+            }
+        }
+    }
+    public LightNode Next()
+    {
+        if (stack.Count > 0)
+        {
+            return stack.Pop();
+        }
+        return null;
+    }
+    public bool HasNext()
+    {
+        return stack.Count > 0;
+    }
+}
+// Клас ітератора для обходу дерева HTML в ширину
+class BreadthFirstIterator : IIterator
+{
+    private Queue<LightNode> queue = new Queue<LightNode>();
+    public BreadthFirstIterator(LightNode root)
+    {
+        Traverse(root);
+    }
+    private void Traverse(LightNode node)
+    {
+        queue.Enqueue(node);
+        while (queue.Count > 0)
+        {
+            LightNode currentNode = queue.Dequeue();
+            if (currentNode is LightElementNode)
+            {
+                foreach (var child in ((LightElementNode)currentNode).Children)
+                {
+                    queue.Enqueue(child);
+                }
+            }
+        }
+    }
+    public LightNode Next()
+    {
+        if (queue.Count > 0)
+        {
+            return queue.Dequeue();
+        }
+        return null;
+    }
+    public bool HasNext()
+    {
+        return queue.Count > 0;
+    }
+}
+// Інтерфейс команди
+interface ICommand
+{
+    void Execute();
+}
+// Команда для додавання дочірнього вузла
+class AddChildCommand : ICommand
+{
+    private LightElementNode _parent;
+    private LightNode _child;
+
+    public AddChildCommand(LightElementNode parent, LightNode child)
+    {
+        _parent = parent;
+        _child = child;
+    }
+
+    public void Execute()
+    {
+        _parent.AddChild(_child);
+    }
+}
+// Команда для видалення дочірнього вузла
+class RemoveChildCommand : ICommand
+{
+    private LightElementNode _parent;
+    private LightNode _child;
+    public RemoveChildCommand(LightElementNode parent, LightNode child)
+    {
+        _parent = parent;
+        _child = child;
+    }
+    public void Execute()
+    {
+        _parent.Children.Remove(_child);
+    }
+}
 // Інтерфейс для стейт
 interface IHtmlState
 {
@@ -8,7 +122,6 @@ interface IHtmlState
     void SwitchToViewMode(LightNode node);
     void SwitchToEditMode(LightNode node);
 }
-
 // Конкретний стан «Режим перегляду»
 class ViewMode : IHtmlState
 {
@@ -16,18 +129,15 @@ class ViewMode : IHtmlState
     {
         Console.WriteLine(node.GetOuterHtml());
     }
-
     public void SwitchToViewMode(LightNode node)
     {
         // Вже в режимі перегляду
     }
-
     public void SwitchToEditMode(LightNode node)
     {
         node.SetEditMode();
     }
 }
-
 // Конкретний стан «Режим редагування»
 class EditMode : IHtmlState
 {
@@ -35,27 +145,22 @@ class EditMode : IHtmlState
     {
         Console.WriteLine(node.GetInnerHtml());
     }
-
     public void SwitchToViewMode(LightNode node)
     {
         node.SetViewMode();
     }
-
     public void SwitchToEditMode(LightNode node)
     {
         // Вже в режимі редагування
     }
 }
-
 abstract class LightNode
 {
     protected IHtmlState _state;
-
     public void SetState(IHtmlState state)
     {
         _state = state;
     }
-
     public abstract string GetOuterHtml();
     public abstract string GetInnerHtml();
 
@@ -63,31 +168,25 @@ abstract class LightNode
     {
         _state.SwitchToViewMode(this);
     }
-
     public virtual void SwitchToEditMode()
     {
         _state.SwitchToEditMode(this);
     }
-
     public virtual void SetEditMode() { }
     public virtual void SetViewMode() { }
 }
-
 class LightTextNode : LightNode
 {
     private string _text;
-
     public LightTextNode(string text)
     {
         _text = text;
         SetState(new ViewMode());
     }
-
     public override string GetOuterHtml()
     {
         return _text;
     }
-
     public override string GetInnerHtml()
     {
         return _text;
@@ -102,6 +201,7 @@ class LightElementNode : LightNode
     private List<LightNode> _children;
     private List<string> _cssClasses;
     private Dictionary<string, string> _attributes;
+    public List<LightNode> Children { get { return _children; } }
 
     public LightElementNode(string tagName, string displayType, string closingType, List<string> cssClasses)
     {
@@ -113,24 +213,20 @@ class LightElementNode : LightNode
         _attributes = new Dictionary<string, string>();
         SetState(new ViewMode());
     }
-
     public void AddChild(LightNode node)
     {
         if (node != null)
             _children.Add(node);
     }
-
     // Методи додавання та видалення атрибутів
     public void AddAttribute(string key, string value)
     {
         _attributes[key] = value;
     }
-
     public void RemoveAttribute(string key)
     {
         _attributes.Remove(key);
     }
-
     public override string GetOuterHtml()
     {
         string result = $"<{_tagName} class=\"{string.Join(" ", _cssClasses)}\" display=\"{_displayType}\" closing=\"{_closingType}\"";
@@ -152,7 +248,6 @@ class LightElementNode : LightNode
         }
         return result;
     }
-
     public override string GetInnerHtml()
     {
         string result = "";
@@ -162,7 +257,6 @@ class LightElementNode : LightNode
         }
         return result;
     }
-
     public override void SetEditMode()
     {
         SetState(new EditMode());
@@ -171,7 +265,6 @@ class LightElementNode : LightNode
             child.SetEditMode();
         }
     }
-
     public override void SetViewMode()
     {
         SetState(new ViewMode());
@@ -181,31 +274,26 @@ class LightElementNode : LightNode
         }
     }
 }
-
 // Контекстний клас
 class HtmlContext
 {
     private IHtmlState _state;
-
     public HtmlContext()
     {
         // Початковий стан - режим перегляду
         TransitionTo(new ViewMode());
     }
-
     // Перехідні стани
     public void TransitionTo(IHtmlState state)
     {
         Console.WriteLine($"Context: Transition to {state.GetType().Name}.");
         _state = state;
     }
-
     // Метод рендерингу HTML
     public void RenderHtml(LightNode node)
     {
         _state.RenderHtml(node);
     }
-
     // Методи додавання та видалення атрибутів у режимі редагування
     public void AddAttribute(LightElementNode node, string key, string value)
     {
@@ -231,13 +319,14 @@ class HtmlContext
         }
     }
 }
-
 class Program
 {
     static void Main(string[] args)
     {
+        // Створення контексту для HTML
         HtmlContext context = new HtmlContext();
 
+        // Створення елементів дерева HTML
         LightElementNode header = new LightElementNode("h1", "block", "closing", new List<string>());
         LightTextNode headerText = new LightTextNode("Welcome to my page!");
         header.AddChild(headerText);
@@ -258,32 +347,60 @@ class Program
         tableRow1.AddChild(tableData2);
 
         // Перегляд HTML
+        Console.WriteLine("Initial HTML:");
         context.RenderHtml(header);
         context.RenderHtml(table);
 
-        // Перехід до режиму редагування
-        context.TransitionTo(new EditMode());
+        // Виконання ітерацій
+        Console.WriteLine("\nDepth First Traversal:");
+        IIterator depthFirstIterator = new DepthFirstIterator(header);
+        while (depthFirstIterator.HasNext())
+        {
+            LightNode node = depthFirstIterator.Next();
+            context.RenderHtml(node);
+        }
 
-        // Редагування
-        context.RenderHtml(header);
-        context.RenderHtml(table);
+        Console.WriteLine("\nBreadth First Traversal:");
+        IIterator breadthFirstIterator = new BreadthFirstIterator(header);
+        while (breadthFirstIterator.HasNext())
+        {
+            LightNode node = breadthFirstIterator.Next();
+            context.RenderHtml(node);
+        }
 
-        // Перехід до режиму перегляду
-        context.TransitionTo(new ViewMode());
+        // Виконання команд
+        ICommand addHeaderCommand = new AddChildCommand(header, headerText);
+        ICommand addTableCommand = new AddChildCommand(header, table);
+        ICommand removeHeaderCommand = new RemoveChildCommand(header, headerText);
 
-        // Повторний перегляд HTML
-        context.RenderHtml(header);
-        context.RenderHtml(table);
+        addHeaderCommand.Execute();
+        addTableCommand.Execute();
+        removeHeaderCommand.Execute();
 
-        // Зміна режиму між елементами
+        // Зміна стану елементів
+        Console.WriteLine("\nChanging to Edit Mode:");
+        header.SetEditMode();
         table.SetEditMode();
 
+        Console.WriteLine("\nAfter Edit Mode:");
+        context.RenderHtml(header);
+        context.RenderHtml(table);
+
+        Console.WriteLine("\nChanging to View Mode:");
+        header.SetViewMode();
+        table.SetViewMode();
+
+        Console.WriteLine("\nAfter View Mode:");
+        context.RenderHtml(header);
+        context.RenderHtml(table);
+
         // Додавання та видалення атрибутів
+        Console.WriteLine("\nAdding attributes in Edit Mode:");
         context.AddAttribute(table, "border", "1");
         context.AddAttribute(table, "cellpadding", "5");
         context.RemoveAttribute(table, "class");
 
-        // Повторний перегляд HTML
+        Console.WriteLine("\nAfter Adding/Removing Attributes:");
         context.RenderHtml(header);
         context.RenderHtml(table);
     }
