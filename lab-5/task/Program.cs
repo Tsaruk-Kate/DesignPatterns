@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 // Інтерфейс для ітератора
 interface IIterator
@@ -7,17 +8,14 @@ interface IIterator
     LightNode Next();
     bool HasNext();
 }
-
 // Клас ітератора для обходу дерева HTML в глибину
 class DepthFirstIterator : IIterator
 {
     private Stack<LightNode> stack = new Stack<LightNode>();
-
     public DepthFirstIterator(LightNode root)
     {
         Traverse(root);
     }
-
     private void Traverse(LightNode node)
     {
         stack.Push(node);
@@ -46,7 +44,6 @@ class DepthFirstIterator : IIterator
 class BreadthFirstIterator : IIterator
 {
     private Queue<LightNode> queue = new Queue<LightNode>();
-
     public BreadthFirstIterator(LightNode root)
     {
         Traverse(root);
@@ -89,7 +86,6 @@ class AddChildCommand : ICommand
 {
     private LightElementNode _parent;
     private LightNode _child;
-
     public AddChildCommand(LightElementNode parent, LightNode child)
     {
         _parent = parent;
@@ -154,6 +150,50 @@ class EditMode : IHtmlState
         // Вже в режимі редагування
     }
 }
+// Контекстний клас
+class HtmlContext
+{
+    private IHtmlState _state;
+    public HtmlContext()
+    {
+        // Початковий стан - режим перегляду
+        TransitionTo(new ViewMode());
+    }
+    // Перехідні стани
+    public void TransitionTo(IHtmlState state)
+    {
+        Console.WriteLine($"Context: Transition to {state.GetType().Name}.");
+        _state = state;
+    }
+    // Метод рендерингу HTML
+    public void RenderHtml(LightNode node)
+    {
+        _state.RenderHtml(node);
+    }
+    // Методи додавання та видалення атрибутів у режимі редагування
+    public void AddAttribute(LightElementNode node, string key, string value)
+    {
+        if (_state is EditMode)
+        {
+            node.AddAttribute(key, value);
+        }
+        else
+        {
+            Console.WriteLine("Attributes can only be added in edit mode.");
+        }
+    }
+    public void RemoveAttribute(LightElementNode node, string key)
+    {
+        if (_state is EditMode)
+        {
+            node.RemoveAttribute(key);
+        }
+        else
+        {
+            Console.WriteLine("Attributes can only be removed in edit mode.");
+        }
+    }
+}
 // Інтерфейс для Template Method
 abstract class NodeLifecycleHooks
 {
@@ -164,7 +204,6 @@ abstract class NodeLifecycleHooks
     public abstract void OnStylesApplied();
     public abstract void OnClassListApplied();
     public abstract void OnTextRendered();
-
     // Шаблонний метод для виклику кроків життєвого циклу
     public void RunLifecycleHooks()
     {
@@ -232,6 +271,49 @@ class TextNodeLifecycleHooks : NodeLifecycleHooks
         Console.WriteLine("Text node rendered.");
     }
 }
+// Базовий клас для відвідувача
+interface IVisitor
+{
+    void VisitElementNode(LightElementNode elementNode);
+    void VisitTextNode(LightTextNode textNode);
+    void VisitListElementNode(LightListElementNode listElementNode);
+    void VisitListItemNode(LightListItemNode listItemNode);
+    void VisitTextInputNode(LightTextInputNode textInputNode);
+    void VisitButtonNode(LightButtonNode buttonNode);
+    void VisitSelectNode(LightSelectNode selectNode);
+}
+// Реалізація відвідувача для виводу HTML
+class HtmlVisitor : IVisitor
+{
+    public void VisitElementNode(LightElementNode elementNode)
+    {
+        Console.WriteLine(elementNode.GetOuterHtml());
+    }
+    public void VisitTextNode(LightTextNode textNode)
+    {
+        Console.WriteLine(textNode.GetOuterHtml());
+    }
+    public void VisitListElementNode(LightListElementNode listElementNode)
+    {
+        Console.WriteLine(listElementNode.GetOuterHtml());
+    }
+    public void VisitListItemNode(LightListItemNode listItemNode)
+    {
+        Console.WriteLine(listItemNode.GetOuterHtml());
+    }
+    public void VisitTextInputNode(LightTextInputNode textInputNode)
+    {
+        Console.WriteLine(textInputNode.GetOuterHtml());
+    }
+    public void VisitButtonNode(LightButtonNode buttonNode)
+    {
+        Console.WriteLine(buttonNode.GetOuterHtml());
+    }
+    public void VisitSelectNode(LightSelectNode selectNode)
+    {
+        Console.WriteLine(selectNode.GetOuterHtml());
+    }
+}
 // Абстрактний клас Node
 abstract class LightNode
 {
@@ -250,6 +332,7 @@ abstract class LightNode
     }
     public virtual void SetEditMode() { }
     public virtual void SetViewMode() { }
+    public abstract void Accept(IVisitor visitor);
 }
 // Клас текстового вузла
 class LightTextNode : LightNode
@@ -273,6 +356,10 @@ class LightTextNode : LightNode
     {
         _lifecycleHooks.RunLifecycleHooks();
     }
+    public override void Accept(IVisitor visitor)
+    {
+        visitor.VisitTextNode(this);
+    }
 }
 // Клас елемента вузла
 class LightElementNode : LightNode
@@ -292,6 +379,8 @@ class LightElementNode : LightNode
         _cssClasses = cssClasses;
         _children = new List<LightNode>();
         _lifecycleHooks = new ElementLifecycleHooks();
+        _attributes = new Dictionary<string, string>();
+
     }
     public void AddChild(LightNode node)
     {
@@ -339,49 +428,151 @@ class LightElementNode : LightNode
         if (_attributes != null && _attributes.ContainsKey(key))
             _attributes.Remove(key);
     }
+    public override void Accept(IVisitor visitor)
+    {
+        visitor.VisitElementNode(this);
+    }
 }
-// Контекстний клас
-class HtmlContext
+// Клас для елемента списку
+class LightListItemNode : LightNode
 {
-    private IHtmlState _state;
-    public HtmlContext()
+    private List<LightNode> _children;
+    public LightListItemNode()
     {
-        // Початковий стан - режим перегляду
-        TransitionTo(new ViewMode());
+        _children = new List<LightNode>();
     }
-    // Перехідні стани
-    public void TransitionTo(IHtmlState state)
+    public override string GetOuterHtml()
     {
-        Console.WriteLine($"Context: Transition to {state.GetType().Name}.");
-        _state = state;
+        string result = "<li>\n";
+        foreach (var child in _children)
+        {
+            result += $"\t{child.GetOuterHtml()}\n";
+        }
+        result += "</li>";
+        return result;
     }
-    // Метод рендерингу HTML
-    public void RenderHtml(LightNode node)
+    public override string GetInnerHtml()
     {
-        _state.RenderHtml(node);
+        string result = "";
+        foreach (var child in _children)
+        {
+            result += child.GetInnerHtml();
+        }
+        return result;
     }
-    // Методи додавання та видалення атрибутів у режимі редагування
-    public void AddAttribute(LightElementNode node, string key, string value)
+    public void AddChild(LightNode node)
     {
-        if (_state is EditMode)
-        {
-            node.AddAttribute(key, value);
-        }
-        else
-        {
-            Console.WriteLine("Attributes can only be added in edit mode.");
-        }
+        _children.Add(node);
     }
-    public void RemoveAttribute(LightElementNode node, string key)
+    public override void Accept(IVisitor visitor)
     {
-        if (_state is EditMode)
+        visitor.VisitListItemNode(this);
+    }
+}
+// Клас для списку (ul або ol)
+class LightListElementNode : LightNode
+{
+    private List<LightNode> _children;
+    private string _listType;
+    public LightListElementNode(string listType)
+    {
+        _listType = listType;
+        _children = new List<LightNode>();
+    }
+    public override string GetOuterHtml()
+    {
+        string result = $"<{_listType}>\n";
+        foreach (var child in _children)
         {
-            node.RemoveAttribute(key);
+            result += $"\t{child.GetOuterHtml()}\n";
         }
-        else
+        result += $"</{_listType}>";
+        return result;
+    }
+    public override string GetInnerHtml()
+    {
+        string result = "";
+        foreach (var child in _children)
         {
-            Console.WriteLine("Attributes can only be removed in edit mode.");
+            result += child.GetInnerHtml();
         }
+        return result;
+    }
+    public void AddChild(LightNode node)
+    {
+        _children.Add(node);
+    }
+    public override void Accept(IVisitor visitor)
+    {
+        visitor.VisitListElementNode(this);
+    }
+}
+// Клас для елемента форми - текстового поля
+class LightTextInputNode : LightNode
+{
+    private string _name;
+    public LightTextInputNode(string name)
+    {
+        _name = name;
+    }
+    public override string GetOuterHtml()
+    {
+        return $"<input type=\"text\" name=\"{_name}\">";
+    }
+    public override string GetInnerHtml()
+    {
+        return "";
+    }
+    public override void Accept(IVisitor visitor)
+    {
+        visitor.VisitTextInputNode(this);
+    }
+}
+// Клас для елемента форми - кнопки
+class LightButtonNode : LightNode
+{
+    private string _text;
+    public LightButtonNode(string text)
+    {
+        _text = text;
+    }
+    public override string GetOuterHtml()
+    {
+        return $"<button>{_text}</button>";
+    }
+    public override string GetInnerHtml()
+    {
+        return "";
+    }
+    public override void Accept(IVisitor visitor)
+    {
+        visitor.VisitButtonNode(this);
+    }
+}
+// Клас для елемента форми - випадаючого списку
+class LightSelectNode : LightNode
+{
+    private List<string> _options;
+    public LightSelectNode(List<string> options)
+    {
+        _options = options;
+    }
+    public override string GetOuterHtml()
+    {
+        string optionsHtml = "";
+        foreach (var option in _options)
+        {
+            optionsHtml += $"<option>{option}</option>";
+        }
+        return $"<select>{optionsHtml}</select>";
+    }
+    public override string GetInnerHtml()
+    {
+        return "";
+    }
+    public override void Accept(IVisitor visitor)
+    {
+        visitor.VisitSelectNode(this);
     }
 }
 class Program
@@ -395,17 +586,13 @@ class Program
         LightElementNode header = new LightElementNode("h1", "block", "closing", new List<string>());
         LightTextNode headerText = new LightTextNode("Welcome to my page!");
         header.AddChild(headerText);
-
         LightElementNode table = new LightElementNode("table", "block", "closing", new List<string> { "styled-table" });
-
         LightElementNode tableRow1 = new LightElementNode("tr", "block", "closing", new List<string>());
         table.AddChild(tableRow1);
-
         LightElementNode tableData1 = new LightElementNode("td", "inline", "closing", new List<string>());
         LightTextNode dataText1 = new LightTextNode("Cell 1");
         tableData1.AddChild(dataText1);
         tableRow1.AddChild(tableData1);
-
         LightElementNode tableData2 = new LightElementNode("td", "inline", "closing", new List<string>());
         LightTextNode dataText2 = new LightTextNode("Cell 2");
         tableData2.AddChild(dataText2);
@@ -446,19 +633,15 @@ class Program
         Console.WriteLine("\nChanging to Edit Mode:");
         header.SetEditMode();
         table.SetEditMode();
-
         Console.WriteLine("\nAfter Edit Mode:");
         context.RenderHtml(header);
         context.RenderHtml(table);
-
         Console.WriteLine("\nChanging to View Mode:");
         header.SetViewMode();
         table.SetViewMode();
-
         Console.WriteLine("\nAfter View Mode:");
         context.RenderHtml(header);
         context.RenderHtml(table);
-
         // Додавання та видалення атрибутів
         Console.WriteLine("\nAdding attributes in Edit Mode:");
         context.AddAttribute(table, "border", "1");
@@ -469,10 +652,23 @@ class Program
         Console.WriteLine("\nRunning Element Lifecycle Hooks:");
         ElementLifecycleHooks elementLifecycleHooks = new ElementLifecycleHooks();
         elementLifecycleHooks.RunLifecycleHooks();
-
         // Перевірка TextNodeLifecycleHooks
         Console.WriteLine("\nRunning Text Node Lifecycle Hooks:");
         TextNodeLifecycleHooks textNodeLifecycleHooks = new TextNodeLifecycleHooks();
         textNodeLifecycleHooks.RunLifecycleHooks();
+
+        // Додавання форми з текстовим полем
+        LightTextInputNode inputField = new LightTextInputNode("username");
+        header.AddChild(inputField);
+        // Додавання кнопки
+        LightButtonNode submitButton = new LightButtonNode("Submit");
+        header.AddChild(submitButton);
+        // Додавання випадаючого списку
+        List<string> options = new List<string> { "Option 1", "Option 2", "Option 3" };
+        LightSelectNode selectList = new LightSelectNode(options);
+        header.AddChild(selectList);
+        // Використовуємо відвідувача для обходу дерева HTML та виводу
+        IVisitor htmlVisitor = new HtmlVisitor();
+        header.Accept(htmlVisitor);
     }
 }
