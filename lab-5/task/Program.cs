@@ -1,86 +1,79 @@
 ﻿using System;
 using System.Collections.Generic;
 
-// Інтерфейс для стейт
-interface IHtmlState
+abstract class NodeLifecycleHooks
 {
-    void RenderHtml(LightNode node);
-    void SwitchToViewMode(LightNode node);
-    void SwitchToEditMode(LightNode node);
-}
+    // Абстрактні методи для кроків життєвого циклу
+    public abstract void OnCreated();
+    public abstract void OnInserted();
+    public abstract void OnRemoved();
+    public abstract void OnStylesApplied();
+    public abstract void OnClassListApplied();
+    public abstract void OnTextRendered();
 
-// Конкретний стан «Режим перегляду»
-class ViewMode : IHtmlState
-{
-    public void RenderHtml(LightNode node)
+    // Шаблонний метод для виклику кроків життєвого циклу
+    public void RunLifecycleHooks()
     {
-        Console.WriteLine(node.GetOuterHtml());
-    }
-
-    public void SwitchToViewMode(LightNode node)
-    {
-        // Вже в режимі перегляду
-    }
-
-    public void SwitchToEditMode(LightNode node)
-    {
-        node.SetEditMode();
+        OnCreated();
+        OnInserted();
+        OnRemoved();
+        OnStylesApplied();
+        OnClassListApplied();
+        OnTextRendered();
     }
 }
 
-// Конкретний стан «Режим редагування»
-class EditMode : IHtmlState
+class ElementLifecycleHooks : NodeLifecycleHooks
 {
-    public void RenderHtml(LightNode node)
+    public override void OnCreated()
     {
-        Console.WriteLine(node.GetInnerHtml());
+        Console.WriteLine("Element created.");
     }
 
-    public void SwitchToViewMode(LightNode node)
+    public override void OnInserted()
     {
-        node.SetViewMode();
+        Console.WriteLine("Element inserted.");
     }
 
-    public void SwitchToEditMode(LightNode node)
+    public override void OnRemoved()
     {
-        // Вже в режимі редагування
+        Console.WriteLine("Element removed.");
+    }
+
+    public override void OnStylesApplied()
+    {
+        Console.WriteLine("Styles applied to element.");
+    }
+
+    public override void OnClassListApplied()
+    {
+        Console.WriteLine("Class list applied to element.");
+    }
+
+    public override void OnTextRendered()
+    {
+        Console.WriteLine("Text rendered inside element.");
     }
 }
 
-abstract class LightNode
+class LightNode
 {
-    protected IHtmlState _state;
+    public virtual string GetOuterHtml() { return ""; }
+    public virtual string GetInnerHtml() { return ""; }
 
-    public void SetState(IHtmlState state)
-    {
-        _state = state;
-    }
-
-    public abstract string GetOuterHtml();
-    public abstract string GetInnerHtml();
-
-    public virtual void SwitchToViewMode()
-    {
-        _state.SwitchToViewMode(this);
-    }
-
-    public virtual void SwitchToEditMode()
-    {
-        _state.SwitchToEditMode(this);
-    }
-
-    public virtual void SetEditMode() { }
-    public virtual void SetViewMode() { }
+    // Додано метод для виклику хуків життєвого циклу
+    public virtual void RunLifecycleHooks() { }
 }
 
 class LightTextNode : LightNode
 {
     private string _text;
+    private NodeLifecycleHooks _lifecycleHooks;
 
     public LightTextNode(string text)
     {
         _text = text;
-        SetState(new ViewMode());
+        _lifecycleHooks = new ElementLifecycleHooks();
     }
 
     public override string GetOuterHtml()
@@ -92,6 +85,11 @@ class LightTextNode : LightNode
     {
         return _text;
     }
+
+    public override void RunLifecycleHooks()
+    {
+        _lifecycleHooks.RunLifecycleHooks();
+    }
 }
 
 class LightElementNode : LightNode
@@ -101,7 +99,7 @@ class LightElementNode : LightNode
     private string _closingType;
     private List<LightNode> _children;
     private List<string> _cssClasses;
-    private Dictionary<string, string> _attributes;
+    private NodeLifecycleHooks _lifecycleHooks;
 
     public LightElementNode(string tagName, string displayType, string closingType, List<string> cssClasses)
     {
@@ -110,38 +108,18 @@ class LightElementNode : LightNode
         _closingType = closingType;
         _cssClasses = cssClasses;
         _children = new List<LightNode>();
-        _attributes = new Dictionary<string, string>();
-        SetState(new ViewMode());
+        _lifecycleHooks = new ElementLifecycleHooks();
     }
 
     public void AddChild(LightNode node)
     {
-        if (node != null)
-            _children.Add(node);
-    }
-
-    // Методи додавання та видалення атрибутів
-    public void AddAttribute(string key, string value)
-    {
-        _attributes[key] = value;
-    }
-
-    public void RemoveAttribute(string key)
-    {
-        _attributes.Remove(key);
+        _children.Add(node);
     }
 
     public override string GetOuterHtml()
     {
-        string result = $"<{_tagName} class=\"{string.Join(" ", _cssClasses)}\" display=\"{_displayType}\" closing=\"{_closingType}\"";
-
-        // Додавання атрибутів до HTML-виводу
-        foreach (var attribute in _attributes)
-        {
-            result += $" {attribute.Key}=\"{attribute.Value}\"";
-        }
-
-        result += ">\n";
+        RunLifecycleHooks(); // Виклик хуків перед отриманням HTML
+        string result = $"<{_tagName} class=\"{string.Join(" ", _cssClasses)}\" display=\"{_displayType}\" closing=\"{_closingType}\">\n";
         foreach (var child in _children)
         {
             result += $"\t{child.GetOuterHtml()}\n";
@@ -163,72 +141,42 @@ class LightElementNode : LightNode
         return result;
     }
 
-    public override void SetEditMode()
+    public override void RunLifecycleHooks()
     {
-        SetState(new EditMode());
-        foreach (var child in _children)
-        {
-            child.SetEditMode();
-        }
-    }
-
-    public override void SetViewMode()
-    {
-        SetState(new ViewMode());
-        foreach (var child in _children)
-        {
-            child.SetViewMode();
-        }
+        _lifecycleHooks.RunLifecycleHooks();
     }
 }
 
-// Контекстний клас
-class HtmlContext
+class TextNodeLifecycleHooks : NodeLifecycleHooks
 {
-    private IHtmlState _state;
-
-    public HtmlContext()
+    public override void OnCreated()
     {
-        // Початковий стан - режим перегляду
-        TransitionTo(new ViewMode());
+        Console.WriteLine("Text node created.");
     }
 
-    // Перехідні стани
-    public void TransitionTo(IHtmlState state)
+    public override void OnInserted()
     {
-        Console.WriteLine($"Context: Transition to {state.GetType().Name}.");
-        _state = state;
+        Console.WriteLine("Text node inserted.");
     }
 
-    // Метод рендерингу HTML
-    public void RenderHtml(LightNode node)
+    public override void OnRemoved()
     {
-        _state.RenderHtml(node);
+        Console.WriteLine("Text node removed.");
     }
 
-    // Методи додавання та видалення атрибутів у режимі редагування
-    public void AddAttribute(LightElementNode node, string key, string value)
+    public override void OnStylesApplied()
     {
-        if (_state is EditMode)
-        {
-            node.AddAttribute(key, value);
-        }
-        else
-        {
-            Console.WriteLine("Attributes can only be added in edit mode.");
-        }
+        Console.WriteLine("Styles applied to text node.");
     }
 
-    public void RemoveAttribute(LightElementNode node, string key)
+    public override void OnClassListApplied()
     {
-        if (_state is EditMode)
-        {
-            node.RemoveAttribute(key);
-        }
-        else
-        {
-            Console.WriteLine("Attributes can only be removed in edit mode.");
-        }
+        Console.WriteLine("Class list applied to text node.");
+    }
+
+    public override void OnTextRendered()
+    {
+        Console.WriteLine("Text node rendered.");
     }
 }
 
@@ -236,8 +184,6 @@ class Program
 {
     static void Main(string[] args)
     {
-        HtmlContext context = new HtmlContext();
-
         LightElementNode header = new LightElementNode("h1", "block", "closing", new List<string>());
         LightTextNode headerText = new LightTextNode("Welcome to my page!");
         header.AddChild(headerText);
@@ -257,34 +203,9 @@ class Program
         tableData2.AddChild(dataText2);
         tableRow1.AddChild(tableData2);
 
-        // Перегляд HTML
-        context.RenderHtml(header);
-        context.RenderHtml(table);
-
-        // Перехід до режиму редагування
-        context.TransitionTo(new EditMode());
-
-        // Редагування
-        context.RenderHtml(header);
-        context.RenderHtml(table);
-
-        // Перехід до режиму перегляду
-        context.TransitionTo(new ViewMode());
-
-        // Повторний перегляд HTML
-        context.RenderHtml(header);
-        context.RenderHtml(table);
-
-        // Зміна режиму між елементами
-        table.SetEditMode();
-
-        // Додавання та видалення атрибутів
-        context.AddAttribute(table, "border", "1");
-        context.AddAttribute(table, "cellpadding", "5");
-        context.RemoveAttribute(table, "class");
-
-        // Повторний перегляд HTML
-        context.RenderHtml(header);
-        context.RenderHtml(table);
+        header.RunLifecycleHooks();
+        Console.WriteLine(header.GetOuterHtml());
+        table.RunLifecycleHooks();
+        Console.WriteLine(table.GetOuterHtml());
     }
 }
